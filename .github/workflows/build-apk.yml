@@ -9,6 +9,7 @@ on:
     paths-ignore:
       - 'ios/**'
       - 'readme.md'
+  workflow_dispatch:
 jobs:
   main:
     runs-on: ubuntu-latest
