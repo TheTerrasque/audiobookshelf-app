@@ -33,7 +33,9 @@ android {
   }
   compileSdk rootProject.ext.compileSdkVersion
   defaultConfig {
-    applicationId "com.audiobookshelf.app"
+    // Fork: own application id so it installs alongside the official app.
+    // The Kotlin package (namespace above) is unchanged.
+    applicationId "io.github.theterrasque.audiobookshelf"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
     versionCode 121
