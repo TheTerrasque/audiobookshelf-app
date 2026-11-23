@@ -73,7 +73,8 @@ repositories {
 
 configurations.configureEach {
   resolutionStrategy {
-    force("com.google.android.gms:play-services-base:18.0.1")
+    // 18.2.0+ has the module install API used by the QR code scanner (@capacitor-mlkit/barcode-scanning)
+    force("com.google.android.gms:play-services-base:18.5.0")
     force("androidx.appcompat:appcompat:$androidxAppCompatVersion")
     force("androidx.core:core-ktx:$androidx_core_ktx_version")
     force("androidx.media:media:$androidx_media_version")
