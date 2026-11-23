@@ -9,12 +9,15 @@
 > - **Multi-file comics.** When a book has several comic files (for example one per volume), next/previous page moves across files, and a file picker in the bottom bar jumps between them.
 > - **Per-file progress.** Reading progress records which file you're in (`ebookFileIno`), so the app and the web reader resume in the same volume.
 > - **Audio version picker.** When the server has alternative versions of a book (e.g. an m4b re-encode), the item page shows a picker. Your choice is saved on the server and applies to streaming and new downloads.
+> - **Quick connect with a QR code.** In the server fork's web app, open **Account → Connect Mobile App** to get a QR code. Scan it with the phone camera, or with **Scan QR Code** on the app's add-server screen, and the app fills in the server address and your username, so you only enter your password (or use SSO). The code is an `audiobookshelf://connect?address=…&username=…` link and never contains credentials. Scanning uses Google's code scanner on Android (downloaded by Play services the first time, no camera permission needed) and the camera on iOS.
 > - **Separate app identity.** Application id `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`) and launcher name **ABS Fork**, so it installs alongside the official app.
 > - **APK builds on GitHub Actions.** Every push builds a debug APK. It's published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) and as a workflow artifact.
+>   - Builds are signed with a fixed key from the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`), so a new build installs as an update. Without the secret each build gets a random key and has to be uninstalled before the next one installs. Builds from before 2026-11-24 used random keys, so uninstall once when moving to a newer build.
 >
 > Known limitations:
 > - Progress synced from offline/native playback doesn't include the file id.
-> - Both apps register the `audiobookshelf://` OAuth scheme, so with both installed, SSO login shows an app chooser.
+> - Both apps register the `audiobookshelf://` scheme, so with both installed, SSO login and quick connect links show an app chooser (pick **ABS Fork**; the official app ignores quick connect links).
+> - Quick connect QR codes come from the server fork only; the official server has no **Connect Mobile App** button. **Scan QR Code** also accepts a QR code containing just a server address.
 
 Audiobookshelf is a self-hosted audiobook and podcast server.
 
