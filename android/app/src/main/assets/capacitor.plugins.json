@@ -1,15 +1,15 @@
 [
 	{
-		"pkg": "@webnativellc/capacitor-filesharer",
-		"classpath": "com.byteowls.capacitor.filesharer.FileSharerPlugin"
-	},
-	{
 		"pkg": "@capacitor-community/keep-awake",
 		"classpath": "com.getcapacitor.community.keepawake.KeepAwakePlugin"
 	},
 	{
 		"pkg": "@capacitor-community/volume-buttons",
 		"classpath": "com.ryltsov.alex.plugins.volume.buttons.VolumeButtonsPlugin"
+	},
+	{
+		"pkg": "@capacitor-mlkit/barcode-scanning",
+		"classpath": "io.capawesome.capacitorjs.plugins.mlkit.barcodescanning.BarcodeScannerPlugin"
 	},
 	{
 		"pkg": "@capacitor/app",
@@ -42,5 +42,9 @@
 	{
 		"pkg": "@capacitor/status-bar",
 		"classpath": "com.capacitorjs.plugins.statusbar.StatusBarPlugin"
+	},
+	{
+		"pkg": "@webnativellc/capacitor-filesharer",
+		"classpath": "com.byteowls.capacitor.filesharer.FileSharerPlugin"
 	}
 ]

@@ -27,7 +27,9 @@ export const state = () => ({
   isNetworkListenerInit: false,
   serverSettings: null,
   lastBookshelfScrollData: {},
-  lastItemScrollData: {}
+  lastItemScrollData: {},
+  // { address, username } from an audiobookshelf://connect link, consumed by ServerConnectForm
+  pendingQuickConnect: null
 })
 
 export const getters = {
@@ -128,6 +130,9 @@ export const actions = {
 export const mutations = {
   setDeviceData(state, deviceData) {
     state.deviceData = deviceData
+  },
+  setPendingQuickConnect(state, data) {
+    state.pendingQuickConnect = data
   },
   setLastBookshelfScrollData(state, { scrollTop, path, name }) {
     state.lastBookshelfScrollData[name] = { scrollTop, path }

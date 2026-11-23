@@ -15,6 +15,8 @@
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera is used to scan a QR code to connect to your server.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Audiobookshelf</string>
 	<key>CFBundleExecutable</key>

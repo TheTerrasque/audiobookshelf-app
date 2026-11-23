@@ -6,6 +6,7 @@ import { AbsFileSystem } from '@/plugins/capacitor'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { Clipboard } from '@capacitor/clipboard'
 import { Capacitor } from '@capacitor/core'
+import { isQuickConnectUrl, parseQuickConnect } from '@/utils/quickConnect'
 import { formatDistance, format, addDays, isDate, setDefaultOptions } from 'date-fns'
 import * as locale from 'date-fns/locale'
 
@@ -329,9 +330,48 @@ export default ({ store, app }, inject) => {
    * @see https://capacitorjs.com/docs/apis/app#addlistenerappurlopen-
    * Listen for url open events for the app. This handles both custom URL scheme links as well as URLs your app handles
    */
+  /**
+   * Quick connect links (see utils/quickConnect.js) open the connect page with the
+   * server address and username filled in.
+   */
+  let lastQuickConnect = { url: null, time: 0 }
+  const handleQuickConnectUrl = (url) => {
+    if (!isQuickConnectUrl(url)) return false
+    // On a cold start both appUrlOpen and getLaunchUrl can report the same link
+    if (lastQuickConnect.url === url && Date.now() - lastQuickConnect.time < 5000) return true
+    lastQuickConnect = { url, time: Date.now() }
+    const quickConnect = parseQuickConnect(url)
+    if (!quickConnect) {
+      console.warn(`[init] Quick connect link has an invalid address: ${url}`)
+      return true
+    }
+    store.commit('setPendingQuickConnect', quickConnect)
+    if (app.router) {
+      app.router.onReady(() => {
+        if (app.router.currentRoute.path !== '/connect') app.router.push('/connect')
+      })
+    }
+    return true
+  }
+
   App.addListener('appUrlOpen', (data) => {
+    if (handleQuickConnectUrl(data.url)) return
     eventBus.$emit('url-open', data.url)
   })
+
+  // Cold start from a quick connect link. The launch URL stays the same for the life of the app,
+  // and the webview is reloaded on some auth errors, so only handle it once per app process.
+  App.getLaunchUrl()
+    .then((launchUrl) => {
+      const url = launchUrl?.url
+      if (!url) return
+      try {
+        if (sessionStorage.getItem('handledLaunchUrl') === url) return
+        sessionStorage.setItem('handledLaunchUrl', url)
+      } catch {}
+      handleQuickConnectUrl(url)
+    })
+    .catch((error) => console.error('[init] Failed to get launch url', error))
 }
 
 export { encode, decode }

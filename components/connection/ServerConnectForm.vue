@@ -39,9 +39,12 @@
           </div>
           <h2 class="text-lg leading-7 mb-2">{{ $strings.LabelServerAddress }}</h2>
           <ui-text-input v-model="serverConfig.address" :disabled="processing || !networkConnected || !!serverConfig.id" placeholder="http://55.55.55.55:13378" type="url" class="w-full h-10" />
-          <div class="flex justify-end items-center mt-6">
+          <div class="flex items-center mt-6">
+            <ui-btn v-if="canScanQrCode && !serverConfig.id" :disabled="processing || scanningQrCode" type="button" :padding-x="3" class="h-10 flex items-center" @click="scanQrCodeClick"><span class="material-symbols text-xl mr-2">qr_code_scanner</span>{{ $strings.ButtonScanQrCode }}</ui-btn>
+            <div class="grow" />
             <ui-btn :disabled="processing || !networkConnected" type="submit" :padding-x="3" class="h-10">{{ networkConnected ? $strings.ButtonSubmit : $strings.MessageNoNetworkConnection }}</ui-btn>
           </div>
+          <p v-if="!serverConfig.id" class="text-xs text-fg-muted mt-4">{{ $strings.MessageQuickConnectHint }}</p>
         </form>
         <!-- username/password and auth methods -->
         <template v-else>
@@ -93,8 +96,10 @@
 
 <script>
 import { Browser } from '@capacitor/browser'
-import { CapacitorHttp } from '@capacitor/core'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { Dialog } from '@capacitor/dialog'
+import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning'
+import { parseQuickConnect } from '@/utils/quickConnect'
 
 // TODO: when backend ready. See validateLoginFormResponse()
 //const requiredServerVersion = '2.5.0'
@@ -115,6 +120,7 @@ export default {
       error: null,
       showForm: false,
       showAddCustomHeaders: false,
+      scanningQrCode: false,
       authMethods: [],
       oauth: {
         state: null,
@@ -150,6 +156,9 @@ export default {
     },
     isOpenIDAuthEnabled() {
       return this.authMethods.includes('openid')
+    },
+    canScanQrCode() {
+      return Capacitor.isNativePlatform()
     }
   },
   methods: {
@@ -948,7 +957,85 @@ export default {
         }
       }
     },
+    /**
+     * Fill in the form from an audiobookshelf://connect link (see plugins/init.client.js).
+     * Reuses a saved connection for the same server and user, otherwise checks the server
+     * and shows the login step with the username filled in.
+     */
+    async applyQuickConnect(quickConnect) {
+      this.$store.commit('setPendingQuickConnect', null)
+      if (!quickConnect?.address) return
+
+      const normalize = (address) => (address || '').replace(/\/+$/, '').toLowerCase()
+      const existingConfig = this.serverConnectionConfigs.find((scc) => normalize(scc.address) === normalize(quickConnect.address) && (!quickConnect.username || scc.username === quickConnect.username))
+      if (existingConfig) {
+        console.log('[ServerConnectForm] Quick connect using saved server config', existingConfig.address)
+        this.connectToServer(existingConfig)
+        return
+      }
+
+      console.log('[ServerConnectForm] Quick connect to new server', quickConnect.address)
+      this.serverConfig = {
+        address: quickConnect.address,
+        userId: '',
+        username: quickConnect.username || ''
+      }
+      this.password = null
+      this.error = null
+      this.showForm = true
+      this.showAuth = false
+      // Check the server and move on to the login step
+      await this.submit(false)
+    },
+    /**
+     * Scan a quick connect QR code (or one holding just the server address).
+     * Android uses the Google code scanner, which needs no camera permission but may
+     * have to be downloaded through Play services the first time.
+     */
+    async scanQrCodeClick() {
+      if (this.scanningQrCode) return
+      this.scanningQrCode = true
+      try {
+        const { supported } = await BarcodeScanner.isSupported()
+        if (!supported) {
+          this.$toast.error(this.$strings.MessageQuickConnectScannerUnavailable)
+          return
+        }
+        if (Capacitor.getPlatform() === 'android') {
+          const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable()
+          if (!available) {
+            await BarcodeScanner.installGoogleBarcodeScannerModule()
+            this.$toast.info(this.$strings.MessageQuickConnectScannerInstalling)
+            return
+          }
+        }
+
+        const { barcodes } = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode] })
+        const rawValue = barcodes?.[0]?.rawValue
+        if (!rawValue) return
+
+        const quickConnect = parseQuickConnect(rawValue)
+        if (!quickConnect) {
+          this.$toast.error(this.$strings.MessageQuickConnectInvalidQrCode)
+          return
+        }
+        await this.applyQuickConnect(quickConnect)
+      } catch (error) {
+        // Closing the scanner rejects with "scan canceled."
+        if (!String(error?.message || error).toLowerCase().includes('canceled')) {
+          console.error('[ServerConnectForm] QR code scan failed', error)
+          this.$toast.error(this.$strings.MessageQuickConnectScannerUnavailable)
+        }
+      } finally {
+        this.scanningQrCode = false
+      }
+    },
     init() {
+      if (this.$store.state.pendingQuickConnect) {
+        this.applyQuickConnect(this.$store.state.pendingQuickConnect)
+        return
+      }
+
       if (this.$route.query.serverConnectionConfigId) {
         // Handle force re-login for servers using new JWT auth but still using an old token OR refresh token failed
         const _serverConfig = this.serverConnectionConfigs.find((scc) => scc.id === this.$route.query.serverConnectionConfigId)
@@ -967,6 +1054,12 @@ export default {
       } else {
         this.showForm = !this.serverConnectionConfigs.length
       }
+    }
+  },
+  watch: {
+    // A quick connect link opened while this form is already showing
+    '$store.state.pendingQuickConnect'(newVal) {
+      if (newVal) this.applyQuickConnect(newVal)
     }
   },
   mounted() {
