@@ -10,6 +10,10 @@ on:
       - 'ios/**'
       - 'readme.md'
   workflow_dispatch:
+
+permissions:
+  contents: write # needed to publish the APK as a GitHub Release
+
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -41,14 +45,33 @@ jobs:
         run: ./android/gradlew assembleDebug -p android --no-daemon
 
       - name: rename apk
+        id: apk
         working-directory: android/app/build/outputs/apk/debug/
         run: |
-          build="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
+          short="$(git rev-parse --short HEAD)"
+          build="$(date +%Y%m%d-%H%M%S)-${short}"
           name="audiobookshelf-${build}.apk"
           mv -v app-debug.apk "${name}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "short=${short}" >> "$GITHUB_OUTPUT"
 
       - name: upload app
         uses: actions/upload-artifact@v4
         with:
           name: audiobookshelf-apk
           path: android/app/build/outputs/apk/debug/*.apk
+
+      # Fork: also publish each build as a pre-release so the plain .apk can be
+      # downloaded straight from a phone browser (artifacts are zipped and need a login).
+      - name: publish release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Build ${{ github.run_number }} (${{ github.ref_name }} @ ${{ steps.apk.outputs.short }})
+          prerelease: true
+          body: |
+            Debug APK of the "ABS Fork" app, built from `${{ github.ref_name }}` at ${{ github.sha }}.
+            Installs alongside the official app (id `io.github.theterrasque.audiobookshelf.debug`).
+          files: android/app/build/outputs/apk/debug/*.apk
