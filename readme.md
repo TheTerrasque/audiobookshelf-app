@@ -1,23 +1,47 @@
 # Audiobookshelf Mobile App
 
 > [!NOTE]
-> **This is an unofficial fork** of [advplyr/audiobookshelf-app](https://github.com/advplyr/audiobookshelf-app), made to go with the server fork at [TheTerrasque/audiobookshelf](https://github.com/TheTerrasque/audiobookshelf). It's not affiliated with or supported by the Audiobookshelf project. For the official app, use the store links below.
->
-> **What's different** (branch `feat/server-comic-pages`):
->
-> - **Comics are read page by page from the server.** CBZ/CBR pages are fetched one at a time through the fork's comic pages API, instead of downloading and unpacking the whole archive on the phone. Large comics open almost instantly. Downloaded (local) items, and servers without the API, fall back to the original in-app extraction.
-> - **Multi-file comics.** When a book has several comic files (for example one per volume), next/previous page moves across files, and a file picker in the bottom bar jumps between them.
-> - **Per-file progress.** Reading progress records which file you're in (`ebookFileIno`), so the app and the web reader resume in the same volume.
-> - **Audio version picker.** When the server has alternative versions of a book (e.g. an m4b re-encode), the item page shows a picker. Your choice is saved on the server and applies to streaming and new downloads.
-> - **Quick connect with a QR code.** In the server fork's web app, open **Account → Connect Mobile App** to get a QR code. Scan it with the phone camera, or with **Scan QR Code** on the app's add-server screen, and the app fills in the server address and your username, so you only enter your password (or use SSO). The code is an `audiobookshelf://connect?address=…&username=…` link and never contains credentials. Scanning uses Google's code scanner on Android (downloaded by Play services the first time, no camera permission needed) and the camera on iOS.
-> - **Separate app identity.** Application id `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`) and launcher name **ABS Fork**, so it installs alongside the official app.
-> - **APK builds on GitHub Actions.** Every push builds a debug APK. It's published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) and as a workflow artifact.
->   - Builds are signed with a fixed key from the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`), so a new build installs as an update. Without the secret each build gets a random key and has to be uninstalled before the next one installs. Builds from before 2026-11-24 used random keys, so uninstall once when moving to a newer build.
->
-> Known limitations:
-> - Progress synced from offline/native playback doesn't include the file id.
-> - Both apps register the `audiobookshelf://` scheme, so with both installed, SSO login and quick connect links show an app chooser (pick **ABS Fork**; the official app ignores quick connect links).
-> - Quick connect QR codes come from the server fork only; the official server has no **Connect Mobile App** button. **Scan QR Code** also accepts a QR code containing just a server address.
+> **This is an unofficial fork** of [advplyr/audiobookshelf-app](https://github.com/advplyr/audiobookshelf-app), made to go with the server fork at [TheTerrasque/audiobookshelf](https://github.com/TheTerrasque/audiobookshelf). It's not affiliated with or supported by the Audiobookshelf project. For the official app, use the store links below. All fork changes are collected on the `fork` branch (the default branch here).
+
+## Extra features
+
+Most of these need the [server fork](https://github.com/TheTerrasque/audiobookshelf); with an official server the app works like the official one.
+
+### Comics
+
+- **Big comics open instantly.** Pages are streamed one at a time from the server instead of downloading and unpacking the whole archive on the phone. Downloaded comics, and servers without the fork, still use the original in-app unpacking.
+- **Series in one book.** When a book has several comic files (one per volume, say), next/previous page carries on into the next file, and a file picker in the bottom bar jumps between them.
+- **Resume in the right volume.** Reading progress remembers which file you were in, so the app and the web reader pick up in the same volume.
+
+### Audio
+
+- **Choose which version of a book you hear.** When the server has other versions of a book (an M4B re-encode, a cleaned-up or sped-up copy), the item page shows a version picker. Your choice is saved on the server and used for streaming and new downloads, and your position carries over between versions.
+
+### Connecting
+
+- **Connect with a QR code.** In the server fork's web app, open **Account → Connect Mobile App**. Scan the QR code with the phone camera, or with **Scan QR Code** on the app's add-server screen, and the server address and your username are filled in; you only enter your password (or use SSO). The code never contains credentials. **Scan QR Code** also accepts a QR code that just holds a server address.
+
+### Installing
+
+- **Installs next to the official app.** It has its own app id and shows up as **ABS Fork** in the launcher.
+- **Ready-to-install APKs.** Every push builds an Android APK, published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) that you can download straight from your phone. New builds install as updates over older ones (builds from before 2026-11-24 need one uninstall first).
+
+### Known limitations
+
+- Progress synced through the offline/native progress sync doesn't record which comic file you were in.
+- Both apps register the `audiobookshelf://` link scheme, so with both installed, SSO login and QR code links show an app chooser. Pick **ABS Fork**; the official app ignores QR code links.
+- QR codes come from the server fork only; the official server has no **Connect Mobile App** button.
+
+<details>
+<summary>Technical details</summary>
+
+- **Comic pages:** uses the server fork's `GET /api/items/:id/ebook/:fileid?/pages[/:page]`. Per-file progress is sent as `ebookFileIno`.
+- **Versions:** `PATCH /api/me/item/:id/version` stores the choice on the server.
+- **Quick connect links:** `audiobookshelf://connect?address=<server url>&username=<username>`, handled in `plugins/init.client.js` and `components/connection/ServerConnectForm.vue`. Scanning uses `@capacitor-mlkit/barcode-scanning`: Google's code scanner on Android (downloaded by Play services the first time, no camera permission) and the camera on iOS.
+- **App id:** `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`).
+- **APK signing:** `.github/workflows/build-apk.yml` signs with the keystore in the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`). Without the secret each build gets a random key and won't install over the previous one.
+
+</details>
 
 Audiobookshelf is a self-hosted audiobook and podcast server.
 
