@@ -145,6 +145,12 @@
           </div>
         </div>
 
+        <!-- fork: file version picker (e.g. an m4b re-encode made on the server) -->
+        <div v-if="versionOptions.length > 1" class="w-full mb-4">
+          <ui-dropdown :value="selectedVersionId" :items="versionOptions" label="Audio version" :disabled="switchingVersion" small @input="selectVersion" />
+          <p class="text-xs text-fg-muted mt-1">Applies to streaming and new downloads on all your devices.</p>
+        </div>
+
         <!-- tables -->
         <tables-podcast-episodes-table v-if="isPodcast" :library-item="libraryItem" :local-library-item-id="localLibraryItemId" :episodes="episodes" :local-episodes="localLibraryItemEpisodes" :is-local="isLocal" />
 
@@ -221,13 +227,26 @@ export default {
       descriptionClamped: false,
       showFullDescription: false,
       episodeStartingPlayback: null,
-      startingDownload: false
+      startingDownload: false,
+      switchingVersion: false
     }
   },
   mixins: [cellularPermissionHelpers],
   computed: {
     isIos() {
       return this.$platform === 'ios'
+    },
+    audioVersions() {
+      // Fork: alternative copies of the audio files, listed by the server in the item JSON
+      if (this.isLocal) return []
+      return (this.libraryItem?.media?.versions || []).filter((v) => v.kind === 'audio')
+    },
+    selectedVersionId() {
+      return this.libraryItem?.media?.selectedVersions?.audio || 'original'
+    },
+    versionOptions() {
+      if (!this.audioVersions.length) return []
+      return [{ value: 'original', text: 'Original files' }, ...this.audioVersions.map((v) => ({ value: v.id, text: v.label }))]
     },
     userCanDownload() {
       return this.$store.getters['user/getUserCanDownload']
@@ -591,9 +610,28 @@ export default {
         this.$eventBus.$emit('play-item', { libraryItemId, serverLibraryItemId: this.serverLibraryItemId, startTime })
       }
     },
+    async selectVersion(value) {
+      // Fork: choose which file version this user gets, then reload so tracks/duration match it
+      if (value === this.selectedVersionId || this.switchingVersion) return
+      this.switchingVersion = true
+      try {
+        await this.$nativeHttp.patch(`/api/me/item/${this.serverLibraryItemId}/version`, { kind: 'audio', versionId: value === 'original' ? null : value })
+        await this.loadServerLibraryItem()
+      } catch (error) {
+        console.error('Failed to select version', error)
+        this.$toast.error('Failed to select version')
+      } finally {
+        this.switchingVersion = false
+      }
+    },
     itemUpdated(libraryItem) {
       if (libraryItem.id === this.serverLibraryItemId) {
         console.log('Item Updated')
+        // Fork: socket payloads carry the original files; re-fetch when this user plays a file version
+        if (this.libraryItem?.media?.selectedVersions?.audio) {
+          this.loadServerLibraryItem()
+          return
+        }
         this.libraryItem = libraryItem
         this.checkDescriptionClamped()
       }

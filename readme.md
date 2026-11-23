@@ -8,6 +8,7 @@
 > - **Comics are read page by page from the server.** CBZ/CBR pages are fetched one at a time through the fork's comic pages API, instead of downloading and unpacking the whole archive on the phone. Large comics open almost instantly. Downloaded (local) items, and servers without the API, fall back to the original in-app extraction.
 > - **Multi-file comics.** When a book has several comic files (for example one per volume), next/previous page moves across files, and a file picker in the bottom bar jumps between them.
 > - **Per-file progress.** Reading progress records which file you're in (`ebookFileIno`), so the app and the web reader resume in the same volume.
+> - **Audio version picker.** When the server has alternative versions of a book (e.g. an m4b re-encode), the item page shows a picker. Your choice is saved on the server and applies to streaming and new downloads.
 > - **Separate app identity.** Application id `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`) and launcher name **ABS Fork**, so it installs alongside the official app.
 > - **APK builds on GitHub Actions.** Every push builds a debug APK. It's published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) and as a workflow artifact.
 >
