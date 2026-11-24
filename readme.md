@@ -12,6 +12,15 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 - **Big comics open instantly.** Pages are streamed one at a time from the server instead of downloading and unpacking the whole archive on the phone. Downloaded comics, and servers without the fork, still use the original in-app unpacking.
 - **Series in one book.** When a book has several comic files (one per volume, say), next/previous page carries on into the next file, and a file picker in the bottom bar jumps between them.
 - **Resume in the right volume.** Reading progress remembers which file you were in, so the app and the web reader pick up in the same volume.
+- **Change the file order.** **Reorder** in a book's Ebook Files list moves files up and down, so a series reads in the right order. Needs permission to update items.
+
+### Epubs
+
+- **Reliable page turning and progress.** Swiping turns exactly one page and progress is saved as you read. In the official app, swiping on a phone could bounce between chapters, land between pages, jump to 100% after a few pages and not save your place. This fix works with any server.
+
+### Library
+
+- **Filter by format.** The library filter has a **Format** option: Audiobook, Ebook or Comic.
 
 ### Audio
 
@@ -31,11 +40,14 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 - Progress synced through the offline/native progress sync doesn't record which comic file you were in.
 - Both apps register the `audiobookshelf://` link scheme, so with both installed, SSO login and QR code links show an app chooser. Pick **ABS Fork**; the official app ignores QR code links.
 - QR codes come from the server fork only; the official server has no **Connect Mobile App** button.
+- Epub pages turn instantly, without the sliding animation of the official app.
 
 <details>
 <summary>Technical details</summary>
 
-- **Comic pages:** uses the server fork's `GET /api/items/:id/ebook/:fileid?/pages[/:page]`. Per-file progress is sent as `ebookFileIno`.
+- **Comic pages:** uses the server fork's `GET /api/items/:id/ebook/:fileid?/pages[/:page]`. Per-file progress is sent as `ebookFileIno`. File order is saved with `PATCH /api/items/:id/ebook`.
+- **Format filter:** `format.<audiobook|ebook|comic>` library filter from the server fork.
+- **Epub reader:** uses epub.js's single-section (`default`) manager without touch snapping; swipes are handled by `Reader.vue` and call `next()`/`prev()`, and the scroll position is snapped to whole pages after each turn. The upstream `continuous` manager with `snap` let native touch scrolling fight with views being added and removed.
 - **Versions:** `PATCH /api/me/item/:id/version` stores the choice on the server.
 - **Quick connect links:** `audiobookshelf://connect?address=<server url>&username=<username>`, handled in `plugins/init.client.js` and `components/connection/ServerConnectForm.vue`. Scanning uses `@capacitor-mlkit/barcode-scanning`: Google's code scanner on Android (downloaded by Play services the first time, no camera permission) and the camera on iOS.
 - **App id:** `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`).

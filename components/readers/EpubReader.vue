@@ -141,14 +141,31 @@ export default {
     goToChapter(href) {
       return this.rendition?.display(href)
     },
-    prev() {
+    async prev() {
       if (this.rendition) {
-        this.rendition.prev()
+        await this.rendition.prev()
+        this.alignToPage()
       }
     },
-    next() {
+    async next() {
       if (this.rendition) {
-        this.rendition.next()
+        await this.rendition.next()
+        this.alignToPage()
+      }
+    },
+    /**
+     * Fork: snap the scroll position to a page boundary. Browsers round scroll positions to device
+     * pixels, so each page turn drifts by a fraction of a pixel and over a long chapter the text
+     * ends up visibly cut off at the page edge.
+     */
+    alignToPage() {
+      const manager = this.rendition?.manager
+      const container = manager?.container
+      const pageWidth = manager?.layout?.delta
+      if (!container || !pageWidth) return
+      const aligned = Math.round(container.scrollLeft / pageWidth) * pageWidth
+      if (Math.abs(container.scrollLeft - aligned) >= 1) {
+        container.scrollLeft = aligned
       }
     },
     /**
@@ -320,11 +337,14 @@ export default {
       })
 
       /** @type {ePub.Rendition} */
+      // Fork: one section at a time, and page turns only through next()/prev() (swipes are handled
+      // by Reader.vue). The continuous manager with snap let native touch scrolling and snapping
+      // fight with views being added/removed, so on phones swipes bounced between sections,
+      // landed between pages and reported wrong locations/percentages.
       reader.rendition = reader.book.renderTo('viewer', {
         width: window.innerWidth,
         height: window.innerHeight - this.readerHeightOffset,
-        snap: true,
-        manager: 'continuous',
+        manager: 'default',
         flow: 'paginated'
       })
 
@@ -338,13 +358,6 @@ export default {
 
         reader.rendition.on('displayed', async () => {
           console.log('%c [EpubReader] Rendition displayed', 'color:blue;')
-
-          // Overriding the needsSnap function in epubjs `snap.js` to fix a bug with scrollLeft being a decimal
-          reader.rendition.manager.snapper.needsSnap = function () {
-            let left = Math.round(this.scrollLeft)
-            let snapWidth = this.layout.pageWidth * this.layout.divisor
-            return left % snapWidth !== 0
-          }
         })
 
         reader.rendition.on('rendered', (section, view) => {
@@ -384,6 +397,7 @@ export default {
         this.currentLocationCfi = displayCfi
         reader.rendition.display(displayCfi).then(() => {
           reader.rendition.display(displayCfi).then(() => {
+            this.alignToPage()
             this.inittingDisplay = false
           })
         })

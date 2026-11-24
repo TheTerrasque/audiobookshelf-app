@@ -158,7 +158,7 @@
 
         <tables-tracks-table v-if="numTracks" :tracks="tracks" :library-item-id="libraryItemId" />
 
-        <tables-ebook-files-table v-if="ebookFiles.length" :library-item="libraryItem" />
+        <tables-ebook-files-table v-if="ebookFiles.length" :library-item="libraryItem" @updated="itemUpdated" />
       </div>
     </div>
 

@@ -132,6 +132,12 @@ export default {
           sublist: true
         },
         {
+          // Fork: needs the server fork's "format" filter
+          text: this.$strings.LabelFormat,
+          value: 'format',
+          sublist: true
+        },
+        {
           text: this.$strings.ButtonIssues,
           value: 'issues',
           sublist: false
@@ -243,6 +249,22 @@ export default {
         {
           id: 'supplementary',
           name: this.$strings.LabelHasSupplementaryEbook
+        }
+      ]
+    },
+    format() {
+      return [
+        {
+          id: 'audiobook',
+          name: this.$strings.LabelFormatAudiobook
+        },
+        {
+          id: 'ebook',
+          name: this.$strings.LabelFormatEbook
+        },
+        {
+          id: 'comic',
+          name: this.$strings.LabelFormatComic
         }
       ]
     },

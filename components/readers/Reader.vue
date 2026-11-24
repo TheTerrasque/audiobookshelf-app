@@ -414,13 +414,12 @@ export default {
         return
       }
       this.hideToolbar()
-      if (!this.isEpub) {
-        if (this.touchendX < this.touchstartX) {
-          this.next()
-        }
-        if (this.touchendX > this.touchstartX) {
-          this.prev()
-        }
+      // Fork: epubs too (the epub reader no longer uses epub.js touch snapping)
+      if (this.touchendX < this.touchstartX) {
+        this.next()
+      }
+      if (this.touchendX > this.touchstartX) {
+        this.prev()
       }
     },
     showToolbar() {
