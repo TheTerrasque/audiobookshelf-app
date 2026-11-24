@@ -240,7 +240,9 @@ class AbsAudioPlayer : Plugin() {
 
         Handler(Looper.getMainLooper()).post {
           Log.d(tag, "prepareLibraryItem: Preparing Local Media item ${jacksonMapper.writeValueAsString(it)}")
-          val playbackSession = it.getPlaybackSession(episode, playerNotificationService.getDeviceInfo())
+          // Fork: stream parts of a partly downloaded book that aren't on the device, when possible
+          val streamMissingParts = episode == null && playerNotificationService.canStreamMissingParts(it)
+          val playbackSession = it.getPlaybackSession(episode, playerNotificationService.getDeviceInfo(), streamMissingParts)
           if (startTimeOverride != null) {
             Log.d(tag, "prepareLibraryItem: Using start time override $startTimeOverride")
             playbackSession.currentTime = startTimeOverride

@@ -80,6 +80,19 @@ class AbsDownloader : Plugin() {
     }
   }
 
+  /**
+   * Fork: drop the audio parts of a running book download that end before currentTime (parts you've
+   * already heard). Parts being downloaded are cancelled. Resolves with { skipped: <count> }.
+   */
+  @PluginMethod
+  fun skipHeardParts(call: PluginCall) {
+    val libraryItemId = call.getString("libraryItemId", "").toString()
+    val currentTime = call.getDouble("currentTime") ?: 0.0
+    val skipped = downloadItemManager.skipAudioPartsBefore(libraryItemId, currentTime)
+    AbsLogger.info(tag, "Skipped $skipped heard parts of download $libraryItemId")
+    call.resolve(JSObject().put("skipped", skipped))
+  }
+
   @PluginMethod
   fun downloadLibraryItem(call: PluginCall) {
     val libraryItemId = call.data.getString("libraryItemId").toString()
@@ -200,8 +213,12 @@ class AbsDownloader : Plugin() {
       }
 
       // Create download item part for each audio track
+      // Fork: start with the part you're in, so you can listen as soon as possible; parts you've
+      // already passed go last
+      val resumeTime = libraryItem.userMediaProgress?.takeIf { !it.isFinished }?.currentTime ?: 0.0
+      val orderedTracks = tracks.filter { it.startOffset + it.duration > resumeTime } + tracks.filter { it.startOffset + it.duration <= resumeTime }
       val audioFiles = (libraryItem.media as Book).audioFiles ?: mutableListOf()
-      tracks.forEach { audioTrack ->
+      orderedTracks.forEach { audioTrack ->
         val fileSize = audioTrack.metadata?.size ?: 0
 
         // TODO: Currently file ino is only stored on AudioFile. This should be updated server side to be in FileMetadata or on the AudioTrack

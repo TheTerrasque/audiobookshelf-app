@@ -122,13 +122,17 @@ class FolderScanner(private val ctx: Context) {
     var localEpisodeId: String? = null
 
     // Fork: while the rest of a book is still downloading, only pick up the parts that are done, and
-    // only up to the first part that isn't (parts download in parallel and can finish out of order)
+    // only up to the first missing part after where you are (parts download in parallel and can finish
+    // out of order; parts before your position download last and may be missing)
     val isPartDone = { p: DownloadItemPart -> p.completed && p.moved && !p.isMoving }
+    val resumeTime = item.userMediaProgress?.takeIf { !it.isFinished }?.currentTime ?: 0.0
     val firstMissingOffset =
             if (onlyFinishedParts)
                     item.downloadItemParts
                             .filter { it.audioTrack != null && !isPartDone(it) }
-                            .minOfOrNull { it.audioTrack!!.startOffset }
+                            .mapNotNull { it.audioTrack }
+                            .filter { it.startOffset + it.duration > resumeTime }
+                            .minOfOrNull { it.startOffset }
             else null
 
     item.downloadItemParts.forEach { part ->
@@ -215,6 +219,7 @@ class FolderScanner(private val ctx: Context) {
         localBook.keepTrackOffsets = true
         localBook.duration = serverDuration
         localBook.numTracks = (item.media as? Book)?.tracks?.size ?: localBook.numTracks
+        (item.media as? Book)?.tracks?.let { localBook.serverTracks = it.toMutableList() }
         localItem.media.setAudioTracks(tracks)
       } else {
         tracks.sortBy { it.index }

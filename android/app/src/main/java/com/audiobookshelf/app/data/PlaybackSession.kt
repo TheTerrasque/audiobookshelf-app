@@ -164,10 +164,15 @@ class PlaybackSession(
   val isPartialLocalBook
     get() = isLocal && episodeId.isNullOrEmpty() && (localLibraryItem?.media as? Book)?.keepTrackOffsets == true
 
-  /** Fork: end of the last track on the device, in ms */
+  /** Fork: end of the last track in this session (on the device or streamed), in ms */
   @get:JsonIgnore
   val localTracksEndMs
     get() = audioTracks.maxOfOrNull { it.endOffsetMs } ?: 0L
+
+  /** Fork: some parts of this local session are streamed from the server */
+  @get:JsonIgnore
+  val hasStreamedParts
+    get() = isLocal && audioTracks.any { !it.isLocal }
 
   @JsonIgnore
   fun checkIsServerVersionGte(compareVersion: String): Boolean {
@@ -208,7 +213,11 @@ class PlaybackSession(
 
   @JsonIgnore
   fun getContentUri(audioTrack: AudioTrack): Uri {
-    if (isLocal) return Uri.parse(audioTrack.contentUrl) // Local content url
+    if (isLocal) {
+      // Fork: a part of a partly downloaded book streamed from the server (auth header added by the player)
+      if (!audioTrack.isLocal && audioTrack.contentUrl.startsWith("/")) return Uri.parse("$serverAddress${audioTrack.contentUrl}")
+      return Uri.parse(audioTrack.contentUrl) // Local content url
+    }
     // As of v2.22.0 tracks use a different endpoint
     // See: https://github.com/advplyr/audiobookshelf/pull/4263
     if (checkIsServerVersionGte("2.22.0")) {

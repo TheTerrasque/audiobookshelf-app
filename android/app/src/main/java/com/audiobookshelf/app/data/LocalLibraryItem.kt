@@ -108,7 +108,7 @@ class LocalLibraryItem(
   }
 
   @JsonIgnore
-  fun getPlaybackSession(episode:PodcastEpisode?, deviceInfo:DeviceInfo):PlaybackSession {
+  fun getPlaybackSession(episode:PodcastEpisode?, deviceInfo:DeviceInfo, streamMissingParts:Boolean = false):PlaybackSession {
     val localEpisodeId = episode?.id
     val sessionId = "${UUID.randomUUID()}"
 
@@ -129,6 +129,26 @@ class LocalLibraryItem(
       chapters = episode.chapters
       duration = episode.audioTrack?.duration ?: 0.0
       Log.d("LocalLibraryItem", "getPlaybackSession: Got podcast episode audio track ${audioTracks.size}")
+    }
+
+    // Fork: fill parts of a partly downloaded book that aren't on the device with tracks streamed
+    // from the server (the caller checks we're online and connected to this item's server)
+    if (episode == null && streamMissingParts) {
+      (media as? Book)?.let { book ->
+        val serverTracks = book.serverTracks
+        if (book.keepTrackOffsets && !serverTracks.isNullOrEmpty()) {
+          val localTracks = audioTracks
+          val streamTracks = serverTracks.filter { st ->
+            localTracks.none { lt -> lt.startOffset < st.startOffset + st.duration - 0.5 && st.startOffset < lt.startOffset + lt.duration - 0.5 }
+          }.map { st ->
+            AudioTrack(st.index, st.startOffset, st.duration, st.title, st.contentUrl, st.mimeType, st.metadata, false, null, st.index)
+          }
+          if (streamTracks.isNotEmpty()) {
+            Log.d("LocalLibraryItem", "getPlaybackSession: streaming ${streamTracks.size} parts that are not downloaded")
+            audioTracks = (localTracks + streamTracks).sortedBy { it.startOffset }.toMutableList()
+          }
+        }
+      }
     }
 
     val dateNow = System.currentTimeMillis()

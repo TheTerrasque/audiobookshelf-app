@@ -81,7 +81,7 @@
         <!-- Fork: books downloaded in parts -->
         <div v-if="showLocalParts" class="flex items-center justify-between px-4 py-2 bg-primary rounded-md mt-4">
           <p class="text-sm">{{ $getString('LabelPartsOnDevice', [localTracks.length, localNumParts]) }}</p>
-          <ui-btn v-if="heardLocalTracks.length" small color="primary" :loading="deletingHeardParts" @click="deleteHeardParts">{{ $strings.ButtonDeleteHeardParts }}</ui-btn>
+          <ui-btn v-if="heardLocalTracks.length || heardPendingParts.length" small color="primary" :loading="deletingHeardParts" @click="deleteHeardParts">{{ $strings.ButtonDeleteHeardParts }}</ui-btn>
         </div>
 
         <div v-if="downloadItem" class="py-3">
@@ -284,14 +284,23 @@ export default {
     showLocalParts() {
       // Fork: local copy of a multi-file book that keeps the server timeline (see Book.keepTrackOffsets in the app)
       if (this.isPodcast || !this.localLibraryItem?.media?.keepTrackOffsets) return false
-      return this.localNumParts > 1 && (this.localTracks.length < this.localNumParts || this.heardLocalTracks.length > 0)
+      return this.localNumParts > 1 && (this.localTracks.length < this.localNumParts || this.heardLocalTracks.length > 0 || this.heardPendingParts.length > 0)
+    },
+    heardTime() {
+      // Where you are: the downloaded copy's progress, or the server's before anything is on the device
+      const progress = this.localItemProgress || this.serverItemProgress
+      if (!progress || progress.isFinished) return 0
+      return progress.currentTime || 0
     },
     heardLocalTracks() {
-      // Parts that end before where you are in the downloaded copy
-      const progress = this.localItemProgress
-      if (!progress || progress.isFinished || !this.localLibraryItem?.media?.keepTrackOffsets) return []
-      const currentTime = progress.currentTime || 0
-      return this.localTracks.filter((t) => t.startOffset + t.duration <= currentTime)
+      // Parts on the device that end before where you are
+      if (!this.heardTime || !this.localLibraryItem?.media?.keepTrackOffsets) return []
+      return this.localTracks.filter((t) => t.startOffset + t.duration <= this.heardTime)
+    },
+    heardPendingParts() {
+      // Parts of a running download that end before where you are and aren't on the device yet
+      if (!this.heardTime || this.isPodcast || !this.downloadItem) return []
+      return (this.downloadItem.downloadItemParts || []).filter((dip) => dip.audioTrack && !dip.moved && dip.audioTrack.startOffset + dip.audioTrack.duration <= this.heardTime)
     },
     localLibraryItemEpisodes() {
       if (!this.isPodcast || !this.localLibraryItem) return []
@@ -758,16 +767,27 @@ export default {
     },
     async deleteHeardParts() {
       const tracks = [...this.heardLocalTracks]
-      if (!tracks.length) return
-      const localFiles = this.localLibraryItem.localFiles || []
+      const pendingCount = this.heardPendingParts.length
+      if (!tracks.length && !pendingCount) return
+      const localFiles = this.localLibraryItem?.localFiles || []
       const size = tracks.reduce((sum, t) => sum + (localFiles.find((lf) => lf.id === t.localFileId)?.size || 0), 0)
+      let message = tracks.length ? this.$getString('MessageConfirmDeleteHeardParts', [tracks.length, this.$bytesPretty(size)]) : ''
+      if (pendingCount) message = `${message} ${this.$getString('MessageConfirmSkipHeardParts', [pendingCount])}`.trim()
       const { value } = await Dialog.confirm({
         title: this.$strings.HeaderConfirm,
-        message: this.$getString('MessageConfirmDeleteHeardParts', [tracks.length, this.$bytesPretty(size)])
+        message
       })
       if (!value) return
 
       this.deletingHeardParts = true
+      if (pendingCount) {
+        // Fork: don't download (or stop downloading) the parts you've already heard
+        const res = await AbsDownloader.skipHeardParts({ libraryItemId: this.downloadItem.id, currentTime: this.heardTime }).catch((error) => {
+          console.error('Failed to skip heard parts', error)
+          return null
+        })
+        if (res?.skipped) this.$toast.success(this.$getString('ToastSkippedHeardParts', [res.skipped]))
+      }
       let updated = null
       let deleted = 0
       for (const track of tracks) {
@@ -785,6 +805,7 @@ export default {
         if (this.isLocal) this.libraryItem = { ...this.libraryItem, ...updated }
         else this.$set(this.libraryItem, 'localLibraryItem', updated)
       }
+      if (!tracks.length) return
       if (deleted === tracks.length) this.$toast.success(this.$getString('ToastDeletedHeardParts', [deleted]))
       else this.$toast.error(this.$getString('ToastDeletedHeardParts', [deleted]) + ` / ${tracks.length}`)
     },

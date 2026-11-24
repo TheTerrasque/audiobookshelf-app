@@ -319,6 +319,7 @@
   "MessageConfirmMarkAsFinished": "Are you sure you want to mark this item as finished?",
   "MessageConfirmPlaybackTime": "Start playback for \"{0}\" at {1}?",
   "MessageConfirmRemoveBookmark": "Are you sure you want to remove bookmark?",
+  "MessageConfirmSkipHeardParts": "{0} heard parts that are still downloading will not be downloaded.",
   "MessageConfirmStreamingUsingCellular": "You are about to stream using cellular data. This may include carrier data charges. Do you wish to continue?",
   "MessageDiscardProgress": "Discard Progress",
   "MessageDownloadCompleteProcessing": "Download complete. Processing...",
@@ -396,6 +397,7 @@
   "ToastPodcastCreateSuccess": "Podcast created successfully",
   "ToastRSSFeedCloseFailed": "Failed to close RSS feed",
   "ToastRSSFeedCloseSuccess": "RSS feed closed",
+  "ToastSkippedHeardParts": "Skipped {0} heard parts in the download",
   "ToastStreamingNotAllowedOnCellular": "Streaming is not allowed on cellular data",
   "UnitMinutesShort": "{0}m",
   "UnitSecondsShort": "{0}s"

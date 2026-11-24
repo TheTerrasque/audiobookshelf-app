@@ -186,6 +186,35 @@ class DownloadItemManager(
     notifyQueueChanged()
   }
 
+  /**
+   * Fork: remove the audio parts of a book download that end at or before [time] and aren't on the
+   * device yet (you've already heard them). Running transfers are cancelled. Keeps at least one audio part.
+   * @return number of parts removed
+   */
+  @Synchronized
+  fun skipAudioPartsBefore(downloadItemId: String, time: Double): Int {
+    val item = downloadItemQueue.find { it.id == downloadItemId } ?: return 0
+    if (finalizingItems.contains(item.id)) return 0
+    val skip =
+            item.downloadItemParts.filter { part ->
+              val track = part.audioTrack
+              track != null && !part.moved && !part.isMoving && track.startOffset + track.duration <= time
+            }
+    if (skip.isEmpty() || skip.size >= item.downloadItemParts.count { it.audioTrack != null }) return 0
+
+    skip.forEach { part ->
+      activeCalls.remove(part.id)?.cancel()
+      currentDownloadItemParts.remove(part)
+      reservations.remove(part.destinationPath)
+      File(part.destinationPath).delete()
+      item.downloadItemParts.removeAll { it === part }
+    }
+    persist(item, force = true)
+    clientEventEmitter.onDownloadItem(item)
+    if (item.isDownloadFinished) checkDownloadItemFinished(item) else checkUpdateDownloadQueue()
+    return skip.size
+  }
+
   @Synchronized
   fun hasWork(): Boolean =
           finalizingItems.isNotEmpty() ||
@@ -347,6 +376,11 @@ class DownloadItemManager(
                       removeActivePart(part)
                       return
                     }
+    // Fork: part was skipped (skipAudioPartsBefore) while it was transferring
+    if (item.downloadItemParts.none { it === part }) {
+      removeActivePart(part)
+      return
+    }
     if (!part.completed && !part.failed) {
       val lastUpdate = part.lastUpdateTime ?: return
       if (System.currentTimeMillis() - lastUpdate > STALL_TIMEOUT_MS) {

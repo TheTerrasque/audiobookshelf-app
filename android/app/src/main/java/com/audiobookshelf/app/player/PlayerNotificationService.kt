@@ -494,10 +494,21 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
 
     if (mPlayer == currentPlayer) {
       val mediaSource: MediaSource
+      var localMediaSourceFactory: ProgressiveMediaSource.Factory? = null
 
       if (playbackSession.isLocal) {
         AbsLogger.info("PlayerNotificationService", "preparePlayer: Playing local item ${currentPlaybackSession?.mediaItemId}.")
-        val dataSourceFactory = DefaultDataSource.Factory(ctx)
+        // Fork: parts of a partly downloaded book may be streamed from the server. The token is read
+        // when each request is made, so a refreshed token is picked up.
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory().setUserAgent(channelId)
+        val authHttpDataSourceFactory =
+                ResolvingDataSource.Factory(httpDataSourceFactory) { dataSpec ->
+                  val scheme = dataSpec.uri.scheme
+                  if (scheme == "http" || scheme == "https") {
+                    dataSpec.withAdditionalHeaders(mapOf("Authorization" to "Bearer ${DeviceManager.token}"))
+                  } else dataSpec
+                }
+        val dataSourceFactory = DefaultDataSource.Factory(ctx, authHttpDataSourceFactory)
 
         val extractorsFactory = DefaultExtractorsFactory()
         extractorsFactory.setConstantBitrateSeekingEnabled(true)
@@ -508,9 +519,9 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
           extractorsFactory.setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING)
         }
 
-        mediaSource =
-                ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
-                        .createMediaSource(mediaItems[0])
+        val progressiveFactory = ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
+        localMediaSourceFactory = progressiveFactory
+        mediaSource = progressiveFactory.createMediaSource(mediaItems[0])
       } else if (!playbackSession.isHLS) {
         AbsLogger.info("PlayerNotificationService", "preparePlayer: Direct playing item ${currentPlaybackSession?.mediaItemId}.")
         val dataSourceFactory = DefaultHttpDataSource.Factory()
@@ -541,7 +552,13 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
 
       // Add remaining media items if multi-track
       if (mediaItems.size > 1) {
-        currentPlayer.addMediaItems(mediaItems.subList(1, mediaItems.size))
+        val remainingSourceFactory = localMediaSourceFactory
+        if (remainingSourceFactory != null) {
+          // Fork: same data source as the first item (local files and streamed parts)
+          mPlayer.addMediaSources(mediaItems.subList(1, mediaItems.size).map<MediaItem, MediaSource> { remainingSourceFactory.createMediaSource(it) })
+        } else {
+          currentPlayer.addMediaItems(mediaItems.subList(1, mediaItems.size))
+        }
         Log.d(tag, "currentPlayer total media items ${currentPlayer.mediaItemCount}")
 
         val currentTrackIndex = playbackSession.getCurrentTrackIndex()
@@ -617,6 +634,22 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
   fun handlePlayerPlaybackError(errorMessage: String) {
     // On error and was attempting to direct play - fallback to transcode
     currentPlaybackSession?.let { playbackSession ->
+      // Fork: a streamed part of a partly downloaded book failed (offline?): go on with what's on the device
+      if (playbackSession.hasStreamedParts) {
+        val localLibraryItem = DeviceManager.dbManager.getLocalLibraryItem(playbackSession.localLibraryItemId)
+        if (localLibraryItem != null && localLibraryItem.hasTracks(ctx, null)) {
+          Log.w(tag, "Streaming a missing part failed ($errorMessage) - continuing with downloaded parts only")
+          val localSession = localLibraryItem.getPlaybackSession(null, getDeviceInfo(), false)
+          localSession.currentTime = getCurrentTimeSeconds()
+          // Keep playing if you were (the failed part may only have been preloading)
+          val keepPlaying = currentPlayer.playWhenReady
+          mediaProgressSyncer.stop {
+            PlayerListener.lazyIsPlaying = false
+            Handler(Looper.getMainLooper()).post { preparePlayer(localSession, keepPlaying, null) }
+          }
+          return
+        }
+      }
       if (playbackSession.isDirectPlay) {
         val playItemRequestPayload = getPlayItemRequestPayload(true)
         Log.d(tag, "Fallback to transcode $playItemRequestPayload.mediaPlayer")
@@ -670,6 +703,18 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
   }
 
   /**
+   * Fork: whether parts of a partly downloaded book that aren't on the device can be streamed: online,
+   * connected to the server it was downloaded from, and allowed by the cellular streaming setting.
+   */
+  fun canStreamMissingParts(localLibraryItem: LocalLibraryItem): Boolean {
+    val configId = localLibraryItem.serverConnectionConfigId ?: return false
+    if (configId != DeviceManager.serverConnectionConfigId) return false
+    if (!DeviceManager.checkConnectivity(ctx)) return false
+    if (!isUnmeteredNetwork && DeviceManager.deviceData.deviceSettings?.streamingUsingCellular != StreamingUsingCellularSetting.ALWAYS) return false
+    return true
+  }
+
+  /**
    * Fork: a partly downloaded book reached the end of the parts it had when playback started. If more
    * parts have been downloaded since, carry on with them. Returns true if playback continues.
    */
@@ -688,7 +733,7 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
     if (!localLibraryItem.hasTracks(ctx, null)) return false
 
     Log.i(tag, "continuePartialLocalBook: continuing ${session.displayTitle} with newly downloaded parts at ${nextTrack.startOffset}")
-    val nextSession = localLibraryItem.getPlaybackSession(null, getDeviceInfo())
+    val nextSession = localLibraryItem.getPlaybackSession(null, getDeviceInfo(), canStreamMissingParts(localLibraryItem))
     nextSession.currentTime = nextTrack.startOffset
     val playbackRate = mediaManager.getSavedPlaybackRate()
     mediaProgressSyncer.stop {

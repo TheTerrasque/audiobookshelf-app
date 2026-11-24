@@ -146,6 +146,8 @@ class Book(
    * [duration] is then the whole book, not the sum of the tracks on the device.
    */
   var keepTrackOffsets:Boolean = false
+  /** Fork: the server's tracks of a downloaded book, used to stream parts that aren't on the device */
+  var serverTracks:MutableList<AudioTrack>? = null
 
   @JsonIgnore
   override fun getAudioTracks():List<AudioTrack> {
