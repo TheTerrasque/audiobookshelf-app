@@ -94,6 +94,10 @@ class PlaybackSession(
         return i
       }
     }
+    // Fork: a time between tracks (a part that isn't on the device) goes to the next track there is
+    for (i in 0 until audioTracks.size) {
+      if (audioTracks[i].startOffsetMs > currentTimeMs) return i
+    }
     return audioTracks.size - 1
   }
 
@@ -136,7 +140,7 @@ class PlaybackSession(
   fun getCurrentTrackTimeMs(): Long {
     val currentTrack = audioTracks[this.getCurrentTrackIndex()]
     val time = currentTime - currentTrack.startOffset
-    return (time * 1000L).toLong()
+    return (time * 1000L).toLong().coerceAtLeast(0L)
   }
 
   @JsonIgnore
@@ -150,8 +154,20 @@ class PlaybackSession(
   fun getTotalDuration(): Double {
     var total = 0.0
     audioTracks.forEach { total += it.duration }
+    // Fork: a partly downloaded book still lasts as long as the whole book
+    if (isPartialLocalBook) return maxOf(duration, audioTracks.maxOfOrNull { it.startOffset + it.duration } ?: 0.0)
     return total
   }
+
+  /** Fork: local book that keeps server track offsets (parts may be missing) */
+  @get:JsonIgnore
+  val isPartialLocalBook
+    get() = isLocal && episodeId.isNullOrEmpty() && (localLibraryItem?.media as? Book)?.keepTrackOffsets == true
+
+  /** Fork: end of the last track on the device, in ms */
+  @get:JsonIgnore
+  val localTracksEndMs
+    get() = audioTracks.maxOfOrNull { it.endOffsetMs } ?: 0L
 
   @JsonIgnore
   fun checkIsServerVersionGte(compareVersion: String): Boolean {

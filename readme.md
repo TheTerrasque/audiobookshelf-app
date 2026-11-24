@@ -26,6 +26,9 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 
 - **Choose which version of a book you hear.** When the server has other versions of a book (an M4B re-encode, a cleaned-up or sped-up copy), the item page shows a version picker. Your choice is saved on the server and used for streaming and new downloads, and your position carries over between versions.
 
+- **Listen while a book downloads (Android).** A book with several audio files can be played as soon as its first files are downloaded; when you reach the end of what's on the phone, playback carries on into parts that finished downloading in the meantime. The item page shows how many parts are on the phone. To get this for a single-file book, have an admin split it into parts with the server fork's M4B encoder (**Split into parts**).
+- **Free up space as you listen (Android).** **Delete heard parts** on the item page removes the downloaded parts that end before your position. The rest of the book keeps its place, and the files on the server are not touched.
+
 ### Connecting
 
 - **Connect with a QR code.** In the server fork's web app, open **Account → Connect Mobile App**. Scan the QR code with the phone camera, or with **Scan QR Code** on the app's add-server screen, and the server address and your username are filled in; you only enter your password (or use SSO). The code never contains credentials. **Scan QR Code** also accepts a QR code that just holds a server address.
@@ -41,6 +44,7 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 - Both apps register the `audiobookshelf://` link scheme, so with both installed, SSO login and QR code links show an app chooser. Pick **ABS Fork**; the official app ignores QR code links.
 - QR codes come from the server fork only; the official server has no **Connect Mobile App** button.
 - Epub pages turn instantly, without the sliding animation of the official app.
+- Listening while a book downloads: if you catch up with the download, playback stops at the end of the downloaded parts (press play again once the next part is in). Parts always download from the start of the book, even if you're further in. Android only.
 
 <details>
 <summary>Technical details</summary>
@@ -49,6 +53,7 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 - **Format filter:** `format.<audiobook|ebook|comic>` library filter from the server fork.
 - **Epub reader:** uses epub.js's single-section (`default`) manager without touch snapping; swipes are handled by `Reader.vue` and call `next()`/`prev()`, and the scroll position is snapped to whole pages after each turn. The upstream `continuous` manager with `snap` let native touch scrolling fight with views being added and removed.
 - **Versions:** `PATCH /api/me/item/:id/version` stores the choice on the server.
+- **Partial downloads:** a downloaded book keeps the server's track offsets and full duration (`Book.keepTrackOffsets` in the local item), so tracks can be missing without shifting the timeline. After each audio file of a multi-file book is downloaded, `DownloadItemManager` saves the local item with the files done so far (up to the first one still missing) and emits `onDownloadItemPartsReady`. At the end of the local files, `PlayerNotificationService` reloads the local item and continues if more files are there. Deleting a track no longer renumbers the rest for these books. Local items downloaded before this change are unaffected.
 - **Quick connect links:** `audiobookshelf://connect?address=<server url>&username=<username>`, handled in `plugins/init.client.js` and `components/connection/ServerConnectForm.vue`. Scanning uses `@capacitor-mlkit/barcode-scanning`: Google's code scanner on Android (downloaded by Play services the first time, no camera permission) and the camera on iOS.
 - **App id:** `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`).
 - **APK signing:** `.github/workflows/build-apk.yml` decodes the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`) and passes it to Gradle as `DEBUG_KEYSTORE_FILE`; `android/app/build.gradle` signs debug builds with it, and the workflow fails if the APK ends up signed with another key. Without the secret each build gets a random key and won't install over the previous one. Version codes are `100000 + run number`.

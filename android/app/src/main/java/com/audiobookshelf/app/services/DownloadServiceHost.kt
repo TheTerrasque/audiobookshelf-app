@@ -201,6 +201,10 @@ object DownloadServiceHost {
       bridgeEmitter.onQueueChanged(hasWork)
       service?.onQueueChanged(hasWork)
     }
+    override fun onDownloadItemPartsReady(jsobj: JSObject) {
+      // Not deferred: the local item is saved in the database, the app picks it up when it opens
+      if (bridgeReady) bridgeEmitter.onDownloadItemPartsReady(jsobj)
+    }
   }
 
   private object NoopEmitter : DownloadItemManager.DownloadEventEmitter {

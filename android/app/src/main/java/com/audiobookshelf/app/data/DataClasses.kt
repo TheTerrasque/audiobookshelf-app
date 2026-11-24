@@ -140,13 +140,29 @@ class Book(
   var duration:Double?,
   var numTracks:Int?
 ) : MediaType(metadata, coverPath) {
+  /**
+   * Fork: a downloaded book keeps the server's track offsets and full duration, so tracks can be
+   * missing (still downloading, or deleted after listening) without shifting the timeline.
+   * [duration] is then the whole book, not the sum of the tracks on the device.
+   */
+  var keepTrackOffsets:Boolean = false
+
   @JsonIgnore
   override fun getAudioTracks():List<AudioTrack> {
     return tracks ?: mutableListOf()
   }
   @JsonIgnore
+  fun getTracksEnd():Double {
+    return tracks?.maxOfOrNull { it.startOffset + it.duration } ?: 0.0
+  }
+  @JsonIgnore
   override fun setAudioTracks(audioTracks:MutableList<AudioTrack>) {
     tracks = audioTracks
+    if (keepTrackOffsets) {
+      tracks?.sortBy { it.startOffset }
+      duration = maxOf(duration ?: 0.0, getTracksEnd())
+      return
+    }
     tracks?.sortBy { it.index }
 
     var totalDuration = 0.0
@@ -161,6 +177,11 @@ class Book(
   @JsonIgnore
   override fun addAudioTrack(audioTrack:AudioTrack) {
     tracks?.add(audioTrack)
+    if (keepTrackOffsets) {
+      tracks?.sortBy { it.startOffset }
+      duration = maxOf(duration ?: 0.0, getTracksEnd())
+      return
+    }
 
     var totalDuration = 0.0
     tracks?.forEach {
@@ -171,6 +192,7 @@ class Book(
   @JsonIgnore
   override fun removeAudioTrack(localFileId:String) {
     tracks?.removeIf { it.localFileId == localFileId }
+    if (keepTrackOffsets) return // the rest of the book stays where it is
 
     tracks?.sortBy { it.index }
 

@@ -642,6 +642,7 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
 
   fun handlePlaybackEnded() {
     Log.d(tag, "handlePlaybackEnded")
+    if (continuePartialLocalBook()) return
     if (isAndroidAuto && currentPlaybackSession?.isPodcastEpisode == true) {
       Log.d(tag, "Podcast playback ended on android auto")
       val libraryItem = currentPlaybackSession?.libraryItem ?: return
@@ -666,6 +667,35 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
         }
       }
     }
+  }
+
+  /**
+   * Fork: a partly downloaded book reached the end of the parts it had when playback started. If more
+   * parts have been downloaded since, carry on with them. Returns true if playback continues.
+   */
+  private fun continuePartialLocalBook(): Boolean {
+    val session = currentPlaybackSession ?: return false
+    if (!session.isPartialLocalBook) return false
+    val endMs = session.localTracksEndMs
+    if (endMs >= session.totalDurationMs - 2000L) return false // the real end of the book
+
+    val localLibraryItem = DeviceManager.dbManager.getLocalLibraryItem(session.localLibraryItemId) ?: return false
+    val nextTrack = localLibraryItem.media.getAudioTracks().firstOrNull { it.startOffsetMs >= endMs - 1000L }
+    if (nextTrack == null) {
+      Log.i(tag, "continuePartialLocalBook: the next part of ${session.displayTitle} is not downloaded yet")
+      return false
+    }
+    if (!localLibraryItem.hasTracks(ctx, null)) return false
+
+    Log.i(tag, "continuePartialLocalBook: continuing ${session.displayTitle} with newly downloaded parts at ${nextTrack.startOffset}")
+    val nextSession = localLibraryItem.getPlaybackSession(null, getDeviceInfo())
+    nextSession.currentTime = nextTrack.startOffset
+    val playbackRate = mediaManager.getSavedPlaybackRate()
+    mediaProgressSyncer.stop {
+      PlayerListener.lazyIsPlaying = false
+      Handler(Looper.getMainLooper()).post { preparePlayer(nextSession, true, playbackRate) }
+    }
+    return true
   }
 
   fun startNewPlaybackSession() {
@@ -952,6 +982,8 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
       Log.d(tag, "Already playing")
       return
     }
+    // Fork: stopped at the end of the downloaded parts; pick up parts that have arrived since
+    if (currentPlayer.playbackState == Player.STATE_ENDED && continuePartialLocalBook()) return
     currentPlayer.volume = 1F
     currentPlayer.play()
   }

@@ -56,6 +56,8 @@ class DownloadItemManager(
     fun onDownloadItemPartUpdate(downloadItemPart: DownloadItemPart)
     fun onDownloadItemComplete(jsobj: JSObject)
     fun onQueueChanged(hasWork: Boolean)
+    /** Fork: some parts of a multi-file book are on the device and playable; the rest is still downloading */
+    fun onDownloadItemPartsReady(jsobj: JSObject) {}
   }
 
   interface InternalProgressCallback {
@@ -555,7 +557,41 @@ class DownloadItemManager(
     reservations.remove(part.destinationPath)
     removeActivePart(part)
     persist(item, force = true)
-    checkDownloadItemFinished(item)
+    if (item.isDownloadFinished) checkDownloadItemFinished(item) else scanFinishedParts(item, part)
+  }
+
+  /**
+   * Fork: make a multi-file book playable as soon as its first audio files are in place. Saves the
+   * local item with the parts that are done (keeping the server's timeline, see Book.keepTrackOffsets).
+   */
+  private fun scanFinishedParts(item: DownloadItem, part: DownloadItemPart) {
+    if (item.mediaType != "book" || part.audioTrack == null) return
+    if (item.downloadItemParts.count { it.audioTrack != null } < 2) return
+    scope.launch {
+      try {
+        val scanLock = scanLocks.computeIfAbsent(scanDestinationKey(item)) { Any() }
+        synchronized(scanLock) {
+          // The final scan may already have run
+          val stillDownloading = synchronized(this@DownloadItemManager) { !finalizingItems.contains(item.id) && downloadItemQueue.contains(item) }
+          if (!stillDownloading) return@launch
+          folderScanner.scanDownloadItem(item, onlyFinishedParts = true) { scanResult ->
+            val localLibraryItem = scanResult?.localLibraryItem ?: return@scanDownloadItem
+            val event =
+                    JSObject().apply {
+                      put("libraryItemId", item.id)
+                      put("localFolderId", item.localFolder.id)
+                      put("localLibraryItem", JSObject(jacksonMapper.writeValueAsString(localLibraryItem)))
+                      scanResult.localMediaProgress?.let {
+                        put("localMediaProgress", JSObject(jacksonMapper.writeValueAsString(it)))
+                      }
+                    }
+            clientEventEmitter.onDownloadItemPartsReady(event)
+          }
+        }
+      } catch (e: Exception) {
+        AbsLogger.error(tag, "Could not scan finished parts of ${item.id}: ${e.message}")
+      }
+    }
   }
 
   @Synchronized

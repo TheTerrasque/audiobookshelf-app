@@ -78,6 +78,12 @@
           </div>
         </div>
 
+        <!-- Fork: books downloaded in parts -->
+        <div v-if="showLocalParts" class="flex items-center justify-between px-4 py-2 bg-primary rounded-md mt-4">
+          <p class="text-sm">{{ $getString('LabelPartsOnDevice', [localTracks.length, localNumParts]) }}</p>
+          <ui-btn v-if="heardLocalTracks.length" small color="primary" :loading="deletingHeardParts" @click="deleteHeardParts">{{ $strings.ButtonDeleteHeardParts }}</ui-btn>
+        </div>
+
         <div v-if="downloadItem" class="py-3">
           <p v-if="downloadItem.itemProgress == 1" class="text-center text-lg">{{ $strings.MessageDownloadCompleteProcessing }}</p>
           <p v-else class="text-center text-lg">{{ $strings.MessageDownloading }} ({{ Math.round(downloadItem.itemProgress * 100) }}%)</p>
@@ -228,6 +234,7 @@ export default {
       showFullDescription: false,
       episodeStartingPlayback: null,
       startingDownload: false,
+      deletingHeardParts: false,
       switchingVersion: false
     }
   },
@@ -267,6 +274,24 @@ export default {
     },
     localLibraryItemId() {
       return this.localLibraryItem?.id || null
+    },
+    localTracks() {
+      return this.localLibraryItem?.media?.tracks || []
+    },
+    localNumParts() {
+      return Math.max(this.localLibraryItem?.media?.numTracks || 0, this.localTracks.length)
+    },
+    showLocalParts() {
+      // Fork: local copy of a multi-file book that keeps the server timeline (see Book.keepTrackOffsets in the app)
+      if (this.isPodcast || !this.localLibraryItem?.media?.keepTrackOffsets) return false
+      return this.localNumParts > 1 && (this.localTracks.length < this.localNumParts || this.heardLocalTracks.length > 0)
+    },
+    heardLocalTracks() {
+      // Parts that end before where you are in the downloaded copy
+      const progress = this.localItemProgress
+      if (!progress || progress.isFinished || !this.localLibraryItem?.media?.keepTrackOffsets) return []
+      const currentTime = progress.currentTime || 0
+      return this.localTracks.filter((t) => t.startOffset + t.duration <= currentTime)
     },
     localLibraryItemEpisodes() {
       if (!this.isPodcast || !this.localLibraryItem) return []
@@ -468,7 +493,8 @@ export default {
       return this.ebookFile
     },
     showDownload() {
-      if (this.isPodcast || this.hasLocal) return false
+      // Fork: a book downloading in parts is playable (has a local item) before the download finishes
+      if (this.isPodcast || (this.hasLocal && !this.downloadItem)) return false
       return this.user && this.userCanDownload && (this.showPlay || this.showRead)
     },
     libraryFiles() {
@@ -729,6 +755,38 @@ export default {
         console.error('Download error', errorMsg)
         this.$toast.error(errorMsg)
       }
+    },
+    async deleteHeardParts() {
+      const tracks = [...this.heardLocalTracks]
+      if (!tracks.length) return
+      const localFiles = this.localLibraryItem.localFiles || []
+      const size = tracks.reduce((sum, t) => sum + (localFiles.find((lf) => lf.id === t.localFileId)?.size || 0), 0)
+      const { value } = await Dialog.confirm({
+        title: this.$strings.HeaderConfirm,
+        message: this.$getString('MessageConfirmDeleteHeardParts', [tracks.length, this.$bytesPretty(size)])
+      })
+      if (!value) return
+
+      this.deletingHeardParts = true
+      let updated = null
+      let deleted = 0
+      for (const track of tracks) {
+        const res = await AbsFileSystem.deleteTrackFromItem({ id: this.localLibraryItem.id, trackLocalFileId: track.localFileId, trackContentUrl: track.contentUrl }).catch((error) => {
+          console.error('Failed to delete heard part', error)
+          return null
+        })
+        if (res?.id) {
+          updated = res
+          deleted++
+        }
+      }
+      this.deletingHeardParts = false
+      if (updated) {
+        if (this.isLocal) this.libraryItem = { ...this.libraryItem, ...updated }
+        else this.$set(this.libraryItem, 'localLibraryItem', updated)
+      }
+      if (deleted === tracks.length) this.$toast.success(this.$getString('ToastDeletedHeardParts', [deleted]))
+      else this.$toast.error(this.$getString('ToastDeletedHeardParts', [deleted]) + ` / ${tracks.length}`)
     },
     newLocalLibraryItem(item) {
       if (item.libraryItemId == this.libraryItemId) {

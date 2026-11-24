@@ -67,6 +67,12 @@ export default {
 
       this.$store.commit('globals/removeItemDownload', data.libraryItemId)
     },
+    onDownloadItemPartsReady(data) {
+      // Fork: the first parts of a multi-file book are on the device and can be played
+      if (!data?.localLibraryItem) return
+      this.$eventBus.$emit('new-local-library-item', data.localLibraryItem)
+      if (data.localMediaProgress) this.$store.commit('globals/updateLocalMediaProgress', data.localMediaProgress)
+    },
     onDownloadItem(downloadItem) {
       console.log('DownloadProgressIndicator onDownloadItem', JSON.stringify(downloadItem))
 
@@ -87,10 +93,12 @@ export default {
     this.itemPartUpdateListener = await AbsDownloader.addListener('onDownloadItemPartUpdate', (data) => this.onDownloadItemPartUpdate(data))
     this.queueChangedListener = await AbsDownloader.addListener('onQueueChanged', (data) => this.onQueueChanged(data))
     this.completeListener = await AbsDownloader.addListener('onItemDownloadComplete', (data) => this.onItemDownloadComplete(data))
+    this.partsReadyListener = await AbsDownloader.addListener('onDownloadItemPartsReady', (data) => this.onDownloadItemPartsReady(data))
   },
   beforeDestroy() {
     this.downloadItemListener?.remove()
     this.completeListener?.remove()
+    this.partsReadyListener?.remove()
     this.itemPartUpdateListener?.remove()
     this.queueChangedListener?.remove()
   }

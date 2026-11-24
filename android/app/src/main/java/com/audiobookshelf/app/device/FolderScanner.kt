@@ -114,13 +114,29 @@ class FolderScanner(private val ctx: Context) {
           item: DownloadItem,
           localItem: LocalLibraryItem,
           externalFolder: DocumentFile? = null,
+          onlyFinishedParts: Boolean = false,
           callback: (DownloadItemScanResult?) -> Unit
   ) {
     val tracks = mutableListOf<AudioTrack>()
     var foundEbook = false
     var localEpisodeId: String? = null
 
+    // Fork: while the rest of a book is still downloading, only pick up the parts that are done, and
+    // only up to the first part that isn't (parts download in parallel and can finish out of order)
+    val isPartDone = { p: DownloadItemPart -> p.completed && p.moved && !p.isMoving }
+    val firstMissingOffset =
+            if (onlyFinishedParts)
+                    item.downloadItemParts
+                            .filter { it.audioTrack != null && !isPartDone(it) }
+                            .minOfOrNull { it.audioTrack!!.startOffset }
+            else null
+
     item.downloadItemParts.forEach { part ->
+      if (onlyFinishedParts) {
+        if (!isPartDone(part)) return@forEach
+        val offset = part.audioTrack?.startOffset
+        if (offset != null && firstMissingOffset != null && offset >= firstMissingOffset) return@forEach
+      }
       val externalFile =
               if (part.isInternalStorage) {
                 null
@@ -191,15 +207,26 @@ class FolderScanner(private val ctx: Context) {
       return
     }
     if (item.mediaType == "book") {
-      tracks.sortBy { it.index }
-      var expectedIndex = 1
-      var offset = 0.0
-      tracks.forEach { track ->
-        track.index = expectedIndex++
-        track.startOffset = offset
-        offset += track.duration
+      // Fork: keep the server's track offsets and the full book length, so a book can be played while
+      // its later parts are still downloading and heard parts can be deleted without moving the rest
+      val localBook = localItem.media as? Book
+      val serverDuration = (item.media as? Book)?.duration
+      if (localBook != null && serverDuration != null && serverDuration > 0) {
+        localBook.keepTrackOffsets = true
+        localBook.duration = serverDuration
+        localBook.numTracks = (item.media as? Book)?.tracks?.size ?: localBook.numTracks
+        localItem.media.setAudioTracks(tracks)
+      } else {
+        tracks.sortBy { it.index }
+        var expectedIndex = 1
+        var offset = 0.0
+        tracks.forEach { track ->
+          track.index = expectedIndex++
+          track.startOffset = offset
+          offset += track.duration
+        }
+        localItem.media.setAudioTracks(tracks)
       }
-      localItem.media.setAudioTracks(tracks)
     }
 
     val result = DownloadItemScanResult(localItem, null)
@@ -207,6 +234,12 @@ class FolderScanner(private val ctx: Context) {
       val progressId =
               if (item.episodeId.isNullOrEmpty()) localItem.id
               else "${localItem.id}-$localEpisodeId"
+      // Fork: a book can be listened to while it downloads; don't overwrite newer local progress
+      val existingProgress = DeviceManager.dbManager.getLocalMediaProgress(progressId)
+      if (existingProgress != null && existingProgress.lastUpdate >= progress.lastUpdate) {
+        result.localMediaProgress = existingProgress
+        return@let
+      }
       result.localMediaProgress =
               LocalMediaProgress(
                       progressId,
@@ -275,13 +308,17 @@ class FolderScanner(private val ctx: Context) {
             }
   }
 
-  fun scanDownloadItem(item: DownloadItem, callback: (DownloadItemScanResult?) -> Unit) {
+  fun scanDownloadItem(
+          item: DownloadItem,
+          onlyFinishedParts: Boolean = false,
+          callback: (DownloadItemScanResult?) -> Unit
+  ) {
     if (item.isInternalStorage) {
       val id = "local_${item.libraryItemId}"
       val localItem =
               DeviceManager.dbManager.getLocalLibraryItem(id)
                       ?: newLocalLibraryItem(id, item, item.itemFolderPath, item.itemFolderPath, "")
-      scanParts(item, localItem, callback = callback)
+      scanParts(item, localItem, onlyFinishedParts = onlyFinishedParts, callback = callback)
       return
     }
 
@@ -307,6 +344,6 @@ class FolderScanner(private val ctx: Context) {
                             itemFolder.getAbsolutePath(ctx),
                             itemFolder.uri.toString()
                     )
-    scanParts(item, localItem, itemFolder, callback)
+    scanParts(item, localItem, itemFolder, onlyFinishedParts, callback)
   }
 }

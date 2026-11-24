@@ -58,6 +58,10 @@ class LocalLibraryItem(
 
   @JsonIgnore
   fun getDuration():Double {
+    // Fork: partly downloaded books know their full length
+    (media as? Book)?.let { book ->
+      if (book.keepTrackOffsets) return maxOf(book.duration ?: 0.0, book.getTracksEnd())
+    }
     var total = 0.0
     val audioTracks = media.getAudioTracks()
     audioTracks.forEach{ total += it.duration }
