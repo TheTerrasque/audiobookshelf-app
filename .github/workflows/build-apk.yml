@@ -43,22 +43,36 @@ jobs:
 
       # Sign every build with the same key so a new APK installs as an update.
       # DEBUG_KEYSTORE_BASE64 is a base64 PKCS12 keystore with the standard debug
-      # credentials (alias androiddebugkey, passwords "android"), which Gradle picks up
-      # from ~/.android/debug.keystore. Without the secret Gradle makes a random key.
+      # credentials (alias androiddebugkey, passwords "android"). android/app/build.gradle
+      # signs debug builds with the file in DEBUG_KEYSTORE_FILE. Without the secret Gradle
+      # makes a random key.
       - name: install debug signing key
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p ~/.android
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+            echo "DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
             echo "Using the debug keystore from secrets"
           else
             echo "::warning::DEBUG_KEYSTORE_BASE64 is not set, the APK is signed with a random key and will not install as an update"
           fi
 
       - name: build Android app
+        env:
+          FORK_BUILD_NUMBER: ${{ github.run_number }}
         run: ./android/gradlew assembleDebug -p android --no-daemon
+
+      # Fail the build rather than publish an APK that can't update the installed app
+      - name: verify signing key
+        if: env.DEBUG_KEYSTORE_FILE != ''
+        run: |
+          expected=$(keytool -list -v -keystore "$DEBUG_KEYSTORE_FILE" -storepass android -alias androiddebugkey | grep 'SHA256:' | head -1 | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-F' 'a-f')
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          actual=$("$apksigner" verify --print-certs android/app/build/outputs/apk/debug/*.apk | grep 'SHA-256 digest' | head -1 | sed 's/.*: //')
+          echo "expected $expected"
+          echo "actual   $actual"
+          [ -n "$expected" ] && [ "$expected" = "$actual" ]
 
       - name: rename apk
         id: apk

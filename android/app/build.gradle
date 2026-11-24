@@ -38,8 +38,11 @@ android {
     applicationId "io.github.theterrasque.audiobookshelf"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 121
-    versionName "0.14.2-beta"
+    // Fork: CI builds set FORK_BUILD_NUMBER (the workflow run number) so every published APK
+    // has a higher version code than the one before and shows its build number.
+    def forkBuildNumber = System.getenv("FORK_BUILD_NUMBER")
+    versionCode forkBuildNumber ? 100000 + forkBuildNumber.toInteger() : 121
+    versionName forkBuildNumber ? "0.14.2-beta.b${forkBuildNumber}" : "0.14.2-beta"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     manifestPlaceholders = [
       "appAuthRedirectScheme": "com.audiobookshelf.app"
@@ -50,8 +53,24 @@ android {
       ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
   }
+  // Fork: CI signs with a fixed key so new APKs install as updates. DEBUG_KEYSTORE_FILE points at
+  // a PKCS12 keystore with the standard debug credentials (see .github/workflows/build-apk.yml).
+  // Relying on ~/.android/debug.keystore doesn't work on GitHub runners: Gradle looks elsewhere
+  // there and generates a random key for every build.
+  def fixedDebugKeystore = System.getenv("DEBUG_KEYSTORE_FILE")
+  signingConfigs {
+    debug {
+      if (fixedDebugKeystore) {
+        storeFile file(fixedDebugKeystore)
+        storePassword "android"
+        keyAlias "androiddebugkey"
+        keyPassword "android"
+      }
+    }
+  }
   buildTypes {
     debug {
+      signingConfig signingConfigs.debug
       applicationIdSuffix ".debug"
       versionNameSuffix "-debug"
       minifyEnabled false

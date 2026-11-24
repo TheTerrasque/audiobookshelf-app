@@ -33,7 +33,7 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 ### Installing
 
 - **Installs next to the official app.** It has its own app id and shows up as **ABS Fork** in the launcher.
-- **Ready-to-install APKs.** Every push builds an Android APK, published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) that you can download straight from your phone. New builds install as updates over older ones (builds from before 2026-11-24 need one uninstall first).
+- **Ready-to-install APKs.** Every push builds an Android APK, published as a pre-release under [Releases](https://github.com/TheTerrasque/audiobookshelf-app/releases) that you can download straight from your phone. From build 10 on, new builds install as updates over older ones; going from build 9 or earlier to a newer build needs one uninstall first. The version shows the build number (e.g. 0.14.2-beta.b10).
 
 ### Known limitations
 
@@ -51,7 +51,7 @@ Most of these need the [server fork](https://github.com/TheTerrasque/audiobooksh
 - **Versions:** `PATCH /api/me/item/:id/version` stores the choice on the server.
 - **Quick connect links:** `audiobookshelf://connect?address=<server url>&username=<username>`, handled in `plugins/init.client.js` and `components/connection/ServerConnectForm.vue`. Scanning uses `@capacitor-mlkit/barcode-scanning`: Google's code scanner on Android (downloaded by Play services the first time, no camera permission) and the camera on iOS.
 - **App id:** `io.github.theterrasque.audiobookshelf` (debug builds add `.debug`).
-- **APK signing:** `.github/workflows/build-apk.yml` signs with the keystore in the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`). Without the secret each build gets a random key and won't install over the previous one.
+- **APK signing:** `.github/workflows/build-apk.yml` decodes the `DEBUG_KEYSTORE_BASE64` repository secret (a base64 PKCS12 keystore, alias `androiddebugkey`, passwords `android`) and passes it to Gradle as `DEBUG_KEYSTORE_FILE`; `android/app/build.gradle` signs debug builds with it, and the workflow fails if the APK ends up signed with another key. Without the secret each build gets a random key and won't install over the previous one. Version codes are `100000 + run number`.
 
 </details>
 
